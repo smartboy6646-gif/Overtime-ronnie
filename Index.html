@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ne">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced OT Tracker</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background-color: #f3f4f6; margin: 0; padding: 15px; }
+        .app-container { max-width: 420px; margin: auto; background: white; padding: 20px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        h2 { text-align: center; color: #1e3a8a; margin-bottom: 5px; }
+        .sub-text { text-align: center; color: #64748b; font-size: 13px; margin-bottom: 20px; }
+        
+        .input-group { background: #eff6ff; padding: 15px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #bfdbfe; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; color: #1e40af; }
+        
+        input[type="time"] { 
+            width: 100%; padding: 12px; border: 2px solid #3b82f6; border-radius: 8px; 
+            font-size: 20px; box-sizing: border-box; background: white; text-align: center;
+        }
+
+        button.add-btn { width: 100%; padding: 15px; background: #2563eb; color: white; border: none; border-radius: 10px; font-size: 16px; font-weight: bold; cursor: pointer; }
+        button.add-btn:active { transform: scale(0.98); }
+
+        .summary { background: #1e293b; color: white; padding: 15px; border-radius: 15px; margin-top: 20px; text-align: center; }
+        .total-val { font-size: 30px; color: #4ade80; font-weight: 800; display: block; }
+
+        table { width: 100%; margin-top: 20px; border-collapse: collapse; }
+        th, td { text-align: left; padding: 12px 5px; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
+        th { color: #94a3b8; font-size: 11px; text-transform: uppercase; }
+        .ot-hour { color: #ef4444; font-weight: bold; }
+        
+        /* Delete Button Style */
+        .del-btn { background: #fee2e2; color: #ef4444; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: bold; }
+        .del-btn:hover { background: #ef4444; color: white; }
+
+        .clear-all { width: 100%; background: none; color: #94a3b8; border: none; font-size: 11px; margin-top: 30px; cursor: pointer; text-decoration: underline; }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <h2>Overtime Note 🕒</h2>
+    <div class="sub-text">Duty Rule: 8:00 AM - 5:30 PM</div>
+
+    <div class="input-group">
+        <label>Out Time (Automatically PM)</label>
+        <input type="time" id="userOutTime" value="19:00">
+    </div>
+
+    <button class="add-btn" onclick="addOTEntry()">Save Today's OT</button>
+
+    <div class="summary">
+        <span style="font-size: 13px; opacity: 0.8;">Total Overtime accumulated</span>
+        <span class="total-val" id="grandTotal">0.00 hrs</span>
+    </div>
+
+    <table id="historyTable">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Time</th>
+                <th>OT Hrs</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+    </table>
+
+    <button class="clear-all" onclick="clearAllData()">Clear Everything</button>
+</div>
+
+<script>
+    window.onload = function() {
+        showData();
+    };
+
+    function format12Hour(timeStr) {
+        let [h, m] = timeStr.split(':');
+        // Overtime bhayepachi hamesha PM nai hunchha (12-23 range)
+        let ampm = 'PM'; 
+        let hr = h % 12 || 12;
+        return hr + ":" + m + " " + ampm;
+    }
+
+    function addOTEntry() {
+        const outTimeInput = document.getElementById('userOutTime').value;
+        if(!outTimeInput) return alert("Time select garnuhos!");
+
+        const today = new Date();
+        const dateString = today.toLocaleDateString('en-GB');
+
+        const [outHour, outMin] = outTimeInput.split(':').map(Number);
+        
+        // Duty 5:30 PM (17:30) ma sakincha
+        const dutyEndMinutes = (17 * 60) + 30; 
+        const userEndMinutes = (outHour * 60) + outMin;
+
+        if (userEndMinutes <= dutyEndMinutes) {
+            alert("Hajurko duty 5:30 PM pachi matra OT ganyincha!");
+            return;
+        }
+
+        const otMinutes = userEndMinutes - dutyEndMinutes;
+        const otHours = (otMinutes / 60).toFixed(2);
+
+        const displayTime = format12Hour(outTimeInput);
+        const entry = { id: Date.now(), date: dateString, time: displayTime, hours: otHours };
+        
+        let myData = JSON.parse(localStorage.getItem('ot_v3')) || [];
+        myData.push(entry);
+        localStorage.setItem('ot_v3', JSON.stringify(myData));
+
+        showData();
+    }
+
+    function showData() {
+        const myData = JSON.parse(localStorage.getItem('ot_v3')) || [];
+        const tbody = document.getElementById('tableBody');
+        let total = 0;
+
+        tbody.innerHTML = "";
+        // Naya entry mathi dekhine gari reverse gareko
+        [...myData].reverse().forEach((item) => {
+            total += parseFloat(item.hours);
+            tbody.innerHTML += `
+                <tr>
+                    <td>${item.date}</td>
+                    <td><b>${item.time}</b></td>
+                    <td class="ot-hour">${item.hours}</td>
+                    <td><button class="del-btn" onclick="deleteEntry(${item.id})">Delete</button></td>
+                </tr>
+            `;
+        });
+
+        document.getElementById('grandTotal').innerText = total.toFixed(2) + " hrs";
+    }
+
+    function deleteEntry(id) {
+        if(confirm("Yo entry hataune ho?")) {
+            let myData = JSON.parse(localStorage.getItem('ot_v3')) || [];
+            myData = myData.filter(item => item.id !== id);
+            localStorage.setItem('ot_v3', JSON.stringify(myData));
+            showData();
+        }
+    }
+
+    function clearAllData() {
+        if(confirm("Sabai history delete garne?")) {
+            localStorage.removeItem('ot_v3');
+            showData();
+        }
+    }
+</script>
+
+</body>
+</html>
